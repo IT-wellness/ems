@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash, User, Mail, GraduationCap, RotateCcw, Banknote, Briefcase } from 'lucide-react'
+import { useDispatch, useSelector } from 'react-redux';
+import toast from 'react-hot-toast';
+import {
+    Plus, Trash, User, Mail, GraduationCap, RotateCcw,
+    Banknote, Briefcase, LoaderCircle } from 'lucide-react'
+import { createEmployee } from '../../store/slices/employeeSlice'
 
 const AddEmployeeForm = () => {
     const navigate = useNavigate();
+    const dispatch = useDispatch();
+    const { status, error } = useSelector((s) => s.employees);
 
+    /* --------------- primitive state blocks --------------------*/
     const [avatarFile, setAvatarFile] = useState(null);
     
     const [personal, setPersonal] = useState({

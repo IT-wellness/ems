@@ -1,33 +1,59 @@
 import express from 'express';
-import {
-  getAllEmployees,
-  getEmployeeById,
-  updateEmployee,
-  deleteEmployee
-} from '../controllers/employeeController.js';
+import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
+
+import Employee from '../models/Employee';
+import { getAccessToken } from '../utils/msgraph.js';
+import { upload} from '../utils/multerConfig.js'
+import { emailQueue } from '../queues/emailQueue.js';
 
 const router = express.Router();
 
-router.post('/add', async (req, res) => {
-    const { firstName, lastName, email, password, phone, role, department } = req.body;
+function mapFilesToDoc(files, payload) {
+    const doc = { ...payload };
+    const fileDict = Object.fromEntries(files.map(f => [f.fieldname, f.path]))
+
+    if (fileDict.avatar) doc.avatarPath = fileDict.avatar;
+    if (fileDict.passbook) doc.bank.passbookPath = fileDict.passbook;
+
+    if (doc.educations?.length) {
+        doc.educations = doc.educations.map((edu, idx) => ({
+            ...edu,
+            certificatePath: fileDict[`education_${idx}`] || edu.certificatePath
+        }));
+    }
+
+    if (doc.organisations?.length) {
+        doc.organisations = doc.organisations.map((org, idx) => ({
+            ...org,
+            experienceLetterUrl: fileDict[`organisation_${idx}`] || org.experienceLetterPath
+        }));
+    }
+    return doc;
+}
+
+router.post('/add', upload.any(), async (req, res) => {
     try {
+        const payload = JSON.parse(req.body.payload || '{}');
+
         // Step 1: Get Microsoft Access Token
         const token = await getAccessToken();
 
         // Step 2: Create User in Microsoft 365
         const msUser = {
             accountEnabled: true,
-            displayName: `${firstName} ${lastName}`,
-            mailNickname: firstName.toLowerCase() + lastName.toLowerCase(),
-            userPrincipalName: email,
+            displayName: `${payload.personal.firstName} ${payload.personal.lastName}`,
+            mailNickname: `${payload.personal.firstName}${payload.personal.lastName}`.toLowerCase(),
+            userPrincipalName: payload.contact.email,
             usageLocation: "CA",
             passwordProfile: {
                 forceChangePasswordNextSignIn: true,
-                password: password || "StrongPassw0rd!"
+                password: "StrongPassw0rd!"
             }
             };
 
-        const userResponse = await axios.post(
+        const { data: { id: msUserId } } = await axios.post(
             'https://graph.microsoft.com/v1.0/users',
             msUser,
             {
@@ -37,8 +63,6 @@ router.post('/add', async (req, res) => {
                 }
             }
             );
-
-        const userId = userResponse.data.id;
         // Step 3: Assign License
         const licenseRequest = {
             addLicenses: [
@@ -60,29 +84,30 @@ router.post('/add', async (req, res) => {
             }
             );
 
+    const docWithFiles = mapFilesToDoc(req.files, payload);
+
         // Step 4: Save Employee in MongoDB
-        const newEmployee = new employeeModel({
-            firstName,
-            lastName,
-            email,
-            password,
-            phone,
-            role,
-            department
-            });
+    const employee = await Employee.create({
+        ...docWithFiles,
+        msUserId: msUserId
+    });
 
-        await newEmployee.save();
+    await emailQueue.add('sendWelcomeEmail', {
+        to: payload.contact.email,
+        name: `${payload.personal.firstname} ${payload.personal.lastname}`,
+        tempPassword
+    });
 
-        res.status(201).json({
-            message: 'Employee created in Microsoft and saved in DB',
-            employee: newEmployee,
-            msUserId: userId
-            });
+    return res.status(201).json({
+      message: 'Employee created',
+      employee: employee,
+      microsoftTempPassword: tempPassword
+    });
 
-    } catch (error) {
-        console.error(error?.response?.data || error.message);
-        res.status(500).json({ message: 'Error creating employee', error: error.message });
-    }
+  } catch (err) {
+    console.error(err?.response?.data || err);
+    return res.status(500).json({ message: err.message || 'Failed to create employee', error: err.message });
+  }
 });
 
 router.get('/all', async (req, res) => {
