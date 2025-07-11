@@ -29,9 +29,10 @@ const EmployeePage = () => {
         dispatch(fetchEmployees());
     }, [dispatch]);
 
-    const filteredEmployees = employees.filter((emp) =>
-        emp.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredEmployees = (employees || []).filter((emp) =>
+  (emp?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+);
+
 
     const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
     
@@ -84,7 +85,7 @@ const EmployeePage = () => {
             {loading ? (
                 <p>Loading employees...</p>
             ) : error ? (
-                <p className='text-red-600'>Error: {error}</p>
+                <p className='text-red-600'>Error: {error.fetch}</p>
             ) : (
                 <>
                     <EmployeeTable

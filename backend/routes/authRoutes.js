@@ -12,8 +12,8 @@ async function resolveEmail(identifier) {
     const candidate = identifier.trim();
 
     if (candidate.includes('@')) return candidate.toLowerCase();
-
-    const employee = await employeeModel.findOne({ employeeCode: candidate.toUpperCase() });
+    const employee = await employeeModel.findOne({ 'employeeCode': candidate.toUpperCase() }).lean();
+    // console.log(employee.email.toLowerCase());
     return employee ? employee.email.toLowerCase() : null;
 }
 
@@ -23,7 +23,7 @@ router.get('/login', async (req, res) => {
     if (!identifier) {
         return res.status(400).json({ message: 'identifier query-param missing' });
     }
-
+    console.log("ID: ", identifier);
     try {
         const email = await resolveEmail(identifier);
         if (!email) {
