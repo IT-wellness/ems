@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 30
+    },
+    "auditLog": "C:\\Users\\Wellness\\Projects\\ems\\ems\\backend\\logs\\.36696f8ed1edec65a5cd037455b8419f2f8da341-audit.json",
+    "files": [
+        {
+            "date": 1753792190087,
+            "name": "C:\\Users\\Wellness\\Projects\\ems\\ems\\backend\\logs\\combined-2025-07-29.log",
+            "hash": "2e5c1291f922408f0aeceb75a1cb0cae9090a24a535f89ab83c337ed401f7372"
+        }
+    ],
+    "hashType": "sha256"
+}

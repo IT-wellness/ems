@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
-import { requiresRole, authMiddleware } from '../middleware/auth.js';
+import { requiresRole, authMiddleware } from '../middleware/authMiddleware.js';
 import {
   addHardware,
   listHardware,
