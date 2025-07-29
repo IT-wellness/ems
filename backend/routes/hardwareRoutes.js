@@ -1,92 +1,53 @@
 import express from 'express';
-import hardwareModel from '../models/Hardware.js';
+import { body, validationResult } from 'express-validator';
+import rateLimit from 'express-rate-limit';
+import { requiresRole, authMiddleware } from '../middleware/auth.js';
+import {
+  addHardware,
+  listHardware,
+  getHardwareById,
+  updateHardware,
+  deleteHardware
+} from '../controllers/hardwareController.js';
 
 const router = express.Router();
 
-router.post('/add', async (req, res) => {
-    const { name, type, brand, model, serialNumber, purchaseDate, warrantyExpiryDate, status, assignedTo } = req.body;
+// Apply authentication globally to hardware routes
+router.use(authMiddleware);
 
-    try {
-        const newHardware = new hardwareModel({
-            name,
-            type,
-            brand,
-            model,
-            serialNumber,
-            purchaseDate,
-            warrantyExpiryDate,
-            status,
-            assignedTo
-        });
-
-        await newHardware.save();
-        res.status(201).json({ message: 'Hardware added successfully', hardware: newHardware });
-    } catch (error) {
-        res.status(400).json({ message: 'Error adding hardware', error: error.message });
-    }
+// Rate limiter for hardware creation
+const createLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many hardware creation attempts'
 });
 
-router.get('/all', async (req, res) => {
-    try {
-        const hardwareItems = await hardwareModel.find({});
-        res.status(200).json(hardwareItems);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching hardware', error: error.message });
-    }
-});
+// Validation chain for hardware creation and update
+const hardwareValidation = [
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('type').isIn(['laptop', 'desktop', 'server', 'network device', 'peripheral']).withMessage('Invalid hardware type'),
+  body('brand').optional().trim(),
+  body('model').optional().trim(),
+  body('serialNumber').optional().isAlphanumeric().withMessage('Serial number must be alphanumeric'),
+  body('purchaseDate').isISO8601().toDate().withMessage('Invalid purchase date'),
+  body('warrantyExpiryDate').optional().isISO8601().toDate().withMessage('Invalid warranty expiry date'),
+  body('status').optional().isIn(['available', 'in use', 'maintenance', 'retired']),
+  body('assignedTo').optional().isMongoId().withMessage('Invalid assignedTo employee ID')
+];
 
-router.get('/:id', async (req, res) => {
-    const { id } = req.params;
+// POST /add - Create hardware (admin only)
+router.post('/add', createLimiter, requiresRole('admin'), hardwareValidation, addHardware);
 
-    try {
-        const hardwareItem = await hardwareModel.findById(id);
-        if (!hardwareItem) {
-            return res.status(404).json({ message: 'Hardware not found' });
-        }
-        res.status(200).json(hardwareItem);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching hardware', error: error.message });
-    }
-});
+// GET /all - List hardware (all authenticated users)
+router.get('/all', listHardware);
 
-router.put('/update/:id', async (req, res) => {
-    const { id } = req.params;
-    const { name, type, brand, model, serialNumber, purchaseDate, warrantyExpiryDate, status, assignedTo } = req.body;
+// GET /:id - Get single hardware by id
+router.get('/:_id', getHardwareById);
 
-    try {
-        const updatedHardware = await hardwareModel.findByIdAndUpdate(id, {
-            name,
-            type,
-            brand,
-            model,
-            serialNumber,
-            purchaseDate,
-            warrantyExpiryDate,
-            status,
-            assignedTo
-        }, { new: true });
+// PUT /update/:id - Update hardware (admin only)
+router.put('/update/:_id', requiresRole('admin'), hardwareValidation, updateHardware);
 
-        if (!updatedHardware) {
-            return res.status(404).json({ message: 'Hardware not found' });
-        }
-        res.status(200).json({ message: 'Hardware updated successfully', hardware: updatedHardware });
-    } catch (error) {
-        res.status(400).json({ message: 'Error updating hardware', error: error.message });
-    }
-});
-
-router.delete('/delete/:id', async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        const deletedHardware = await hardwareModel.findByIdAndDelete(id);
-        if (!deletedHardware) {
-            return res.status(404).json({ message: 'Hardware not found' });
-        }
-        res.status(200).json({ message: 'Hardware deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ message: 'Error deleting hardware', error: error.message });
-    }
-});
+// DELETE /delete/:id - Delete hardware (admin only)
+router.delete('/delete/:_id', requiresRole('admin'), deleteHardware);
 
 export default router;

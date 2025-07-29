@@ -1,88 +1,60 @@
 import express from 'express';
-import softwareModel from '../models/Software.js';
+import { body, param, query } from 'express-validator';
+import rateLimit from 'express-rate-limit';
+import { authMiddleware, requiresRole } from '../middleware/authMiddleware.js';
+import {
+  addSoftware,
+  listSoftware,
+  getSoftwareById,
+  updateSoftware,
+  deleteSoftware
+} from '../controllers/softwareController.js';
 
 const router = express.Router();
-
-router.post('/add', async (req, res) => {
-    const { name, version, vendor, licenseType, purchaseDate, expiryDate, assignedTo } = req.body;
-
-    try {
-        const newSoftware = new softwareModel({
-            name,
-            version,
-            vendor,
-            licenseType,
-            purchaseDate,
-            expiryDate,
-            assignedTo
-        });
-
-        await newSoftware.save();
-        res.status(201).json({ message: 'Software added successfully', software: newSoftware });
-    } catch (error) {
-        res.status(400).json({ message: 'Error adding software', error: error.message });
-    }
+router.use(authMiddleware);
+const createLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many software creation attempts'
 });
 
-router.get('/all', async (req, res) => {
-    try {
-        const softwareItems = await softwareModel.find({}).populate('assignedTo');
-        res.status(200).json(softwareItems);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching software', error: error.message });
-    }
-});
+// Validation rules for POST and PUT
+const softwareValidation = [
+  body('name').notEmpty().withMessage('Name is required').trim(),
+  body('version').notEmpty().withMessage('Version is required').trim(),
+  body('vendor').notEmpty().withMessage('Vendor is required').trim(),
+  body('licenseType').notEmpty().isIn(['commercial', 'open-source', 'freeware', 'shareware'])
+    .withMessage('Invalid license type'),
+  body('purchaseDate').isISO8601().toDate().withMessage('Invalid purchase date'),
+  body('expiryDate').optional().isISO8601().toDate().withMessage('Invalid expiry date'),
+  body('assignedTo').optional().isMongoId().withMessage('Invalid assignedTo ID'),
+];
 
-router.get('/:id', async (req, res) => {
-    const { id } = req.params;
+// POST /add - create software (admins only)
+router.post('/add', createLimiter, requiresRole('admin'), softwareValidation, addSoftware);
 
-    try {
-        const softwareItem = await softwareModel.findById(id).populate('assignedTo');
-        if (!softwareItem) {
-            return res.status(404).json({ message: 'Software not found' });
-        }
-        res.status(200).json(softwareItem);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching software', error: error.message });
-    }
-});
+// GET /all - list software (all authenticated users)
+router.get('/all', listSoftware);
 
-router.put('/update/:id', async (req, res) => {
-    const { id } = req.params;
-    const { name, version, vendor, licenseType, purchaseDate, expiryDate, assignedTo } = req.body;
+// GET /:id - get software by ID (all authenticated)
+router.get('/:_id',
+  param('_id').isMongoId().withMessage('Invalid software ID'),
+  getSoftwareById
+);
 
-    try {
-        const updatedSoftware = await softwareModel.findByIdAndUpdate(id, {
-            name,
-            version,
-            vendor,
-            licenseType,
-            purchaseDate,
-            expiryDate,
-            assignedTo
-        }, { new: true });
+// PUT /update/:id - update software (admins only)
+router.put('/update/:_id',
+  requiresRole('admin'),
+  param('_id').isMongoId().withMessage('Invalid software ID'),
+  softwareValidation,
+  updateSoftware
+);
 
-        if (!updatedSoftware) {
-            return res.status(404).json({ message: 'Software not found' });
-        }
-        res.status(200).json({ message: 'Software updated successfully', software: updatedSoftware });
-    } catch (error) {
-        res.status(400).json({ message: 'Error updating software', error: error.message });
-    }
-});
-
-router.delete('/delete/:id', async (req, res) => {
-    const { id } = req.params;
-
-    try {
-        const deletedSoftware = await softwareModel.findByIdAndDelete(id);
-        if (!deletedSoftware) {
-            return res.status(404).json({ message: 'Software not found' });
-        }
-        res.status(200).json({ message: 'Software deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ message: 'Error deleting software', error: error.message });
-    }
-});
+// DELETE /delete/:id - delete software (admins only)
+router.delete('/delete/:_id',
+  requiresRole('admin'),
+  param('_id').isMongoId().withMessage('Invalid software ID'),
+  deleteSoftware
+);
 
 export default router;
